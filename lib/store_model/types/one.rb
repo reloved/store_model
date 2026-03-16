@@ -93,9 +93,18 @@ module StoreModel
       end
 
       def model_instance(value)
-        @model_klass.new(value)
-      rescue ActiveModel::UnknownAttributeError => e
-        handle_unknown_attribute(value, e)
+        value_hash = value.to_h.symbolize_keys
+        value_hash = value_hash[:attributes] if value_hash.key?(:attributes)
+
+        known_attrs = @model_klass.attribute_names.map(&:to_sym)
+        known_values = value_hash.slice(*known_attrs)
+        unknown_values = value_hash.except(*known_attrs)
+
+        @model_klass.new(known_values).tap do |instance|
+          unknown_values.each do |key, val|
+            instance.unknown_attributes[key.to_s] = val
+          end
+        end
       end
 
       def deserialize_by_types(hash)

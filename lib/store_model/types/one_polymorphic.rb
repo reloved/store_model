@@ -30,20 +30,17 @@ module StoreModel
       # @param value [Object] a value to cast
       #
       # @return StoreModel::Model
-      def cast_value(value) # rubocop:disable Metrics/MethodLength
+      def cast_value(value)
         return nil if value.nil?
 
         if value.is_a?(String)
           decode_and_initialize(value)
-        elsif value.class.ancestors.include?(StoreModel::Model)
-          value
-        elsif value.respond_to?(:to_h) # Hash itself included
-          extract_model_klass(value).to_type.cast_value(value.to_h)
+        elsif value.respond_to?(:to_h)
+          model_instance(value)
         else
-          raise_cast_error(value)
+          raise_cast_error(value) unless value.class.ancestors.include?(StoreModel::Model)
+          value
         end
-      rescue ActiveModel::UnknownAttributeError => e
-        handle_unknown_attribute(value, e)
       end
 
       # Casts a value from the ruby type to a type that the database knows how
@@ -88,7 +85,19 @@ module StoreModel
       end
 
       def model_instance(value)
-        extract_model_klass(value).new(value)
+        model_klass = extract_model_klass(value)
+        value_hash = value.to_h.symbolize_keys
+        value_hash = value_hash[:attributes] if value_hash.key?(:attributes)
+
+        known_attrs = model_klass.attribute_names.map(&:to_sym)
+        known_values = value_hash.slice(*known_attrs)
+        unknown_values = value_hash.except(*known_attrs)
+
+        model_klass.new(known_values).tap do |instance|
+          unknown_values.each do |key, val|
+            instance.unknown_attributes[key.to_s] = val
+          end
+        end
       end
     end
   end
